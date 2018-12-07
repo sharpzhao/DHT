@@ -36,9 +36,17 @@ public class Main {
         Node c = new Node(110);
         c.join(a);
 
+
+
         System.out.println("\n\n ------------------ Test LookUp Key-------------");
         a.get(100);
         a.get(111);
         a.get(0);
+
+        System.out.println("\n\n ------------------ Test Leave -------------");
+        c.leave();
+        for (Node n: arr) {
+            n.leave();
+        }
     }
 }

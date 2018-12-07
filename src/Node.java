@@ -4,12 +4,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class Node {
+    private static int circleMax = (int)Math.pow(2, Constants.IDENTIFIER_SIZE);
     private int id;
     public FingerTable fingerTable;
     private Map<Integer, String> cache;
     private Node prevNode;
-
-    private static int circleMax = (int)Math.pow(2, Constants.IDENTIFIER_SIZE);
 
     public int getId() {
         return this.id;
@@ -35,20 +34,24 @@ public class Node {
         return this.cache.get(key);
     }
 
+    public void setPrevNode(Node prevNode) {
+        this.prevNode = prevNode;
+    }
+
+    public void migrateAll(Map<Integer, String> map) {
+        System.out.println("Entries migrated to Node(" + this.id + "): " + map);
+        this.cache.putAll(map);
+    }
+
     public Map<Integer, String> migrateFrom(int fromId) {
         Map<Integer, String> ret = this.cache.entrySet().stream()
                 .filter( entry -> entry.getKey() <= fromId)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         // Rubrics 2, Correct keys are moved when a new node joins the DHT network. Print the keys that are migrated
-        System.out.println("Entries need to be migrated from Node(" + this.id + ") to Node(" + fromId + "): " + ret);
         this.cache = this.cache.entrySet().stream()
                 .filter( entry -> entry.getKey() > fromId)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         return ret;
-    }
-
-    public void setPrevNode(Node prevNode) {
-        this.prevNode = prevNode;
     }
 
     public Node(int id) {
@@ -73,6 +76,7 @@ public class Node {
         //First get the next node
         Node next = node.findNextNodeByVirtualId(id);
 
+        //init the fingerTable of current joined Node.
         IntStream.range(0, Constants.IDENTIFIER_SIZE)
                 .map(p -> (id + (int) Math.pow(2, p)) % circleMax)
                 .forEach(virtualId -> {
@@ -87,11 +91,31 @@ public class Node {
         //update all the Node;
         this.prevNode.updateFingerTable(this);
 
-        System.out.println("New Node(" + this.id + ") Joined, FingerTable: " + this.fingerTable);
-        //migrate the cache from next node.
-        this.cache.putAll(next.migrateFrom(this.id));
-
         // Rubrics 1, Build the finger table correctly and print the finger table in the screen when a new node joins.
+        System.out.println("New Node(" + this.id + ") Joined, FingerTable: " + this.fingerTable);
+
+        //migrate the cache from next node.
+        this.migrateAll(next.migrateFrom(this.id));
+    }
+
+    public void leave() {
+        // Rubrics 4, Implement Node::leave() correctly.
+        System.out.println("Node(" + this.id + ") leaved");
+        if (this.prevNode.getId() == this.id) {
+            // this is the only node remains in the network.
+            return;
+        }
+
+        Node prev = this.prevNode;
+        Node next = this.fingerTable.getFirstNode();
+
+        next.setPrevNode(prev);
+
+        // update all the fingerTable
+        prev.updateFingerTable(next);
+
+        // migrate the cache from removed node.
+        next.migrateAll(this.cache);
     }
 
     public String insert(int key, String value) {
