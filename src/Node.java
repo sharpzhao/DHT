@@ -31,18 +31,20 @@ public class Node {
         return this.cache.put(key, value);
     }
 
+    public String getCache(int key) {
+        return this.cache.get(key);
+    }
+
     public Map<Integer, String> migrateFrom(int fromId) {
         Map<Integer, String> ret = this.cache.entrySet().stream()
                 .filter( entry -> entry.getKey() <= fromId)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        // Rubrics 2, Correct keys are moved when a new node joins the DHT network. Print the keys that are migrated
+        System.out.println("Entries need to be migrated from Node(" + this.id + ") to Node(" + fromId + "): " + ret);
         this.cache = this.cache.entrySet().stream()
                 .filter( entry -> entry.getKey() > fromId)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         return ret;
-    }
-
-    public void putToLocalCache(int key, String value) {
-        this.cache.put(key, value);
     }
 
     public void setPrevNode(Node prevNode) {
@@ -61,6 +63,8 @@ public class Node {
             IntStream.range(0, Constants.IDENTIFIER_SIZE)
                     .forEach( p -> fingerTable.add(this) );
             this.prevNode= this;
+            // Rubrics 1, Build the finger table correctly and print the finger table in the screen when a new node joins.
+            System.out.println("New Node(" + this.id + ") Joined, FingerTable: " + this.fingerTable);
             return;
         }
 
@@ -83,8 +87,11 @@ public class Node {
         //update all the Node;
         this.prevNode.updateFingerTable(this);
 
+        System.out.println("New Node(" + this.id + ") Joined, FingerTable: " + this.fingerTable);
         //migrate the cache from next node.
         this.cache.putAll(next.migrateFrom(this.id));
+
+        // Rubrics 1, Build the finger table correctly and print the finger table in the screen when a new node joins.
     }
 
     public String insert(int key, String value) {
@@ -95,6 +102,13 @@ public class Node {
         return this.findNextNodeByVirtualId(key).removeCache(key);
     }
 
+    public String get(int key) {
+        System.out.print("Get Key(" + key + "), Node Traverse Route: ");
+        Node node = this.findNextNodeByVirtualIdAndPrintRoute(key, true);
+        System.out.println(node.getId() + " ( Value: " + node.getCache(key) + ")");
+        return node.getCache(key);
+    }
+
     public void updateFingerTable(Node source) {
 
         if (source.getId() == this.id) return;
@@ -102,8 +116,14 @@ public class Node {
         IntStream.range(0, Constants.IDENTIFIER_SIZE)
                 .forEach( p -> {
                     int virtualId = (this.id + (int) Math.pow(2, p)) % circleMax;
+                    int prevId = source.getPrevNode().getId();
+                    int curId = source.getId();
 
-                    if (virtualId > source.getPrevNode().getId() && virtualId <= source.getId()) {
+                    if (virtualId > prevId && virtualId <= curId) {
+                        this.fingerTable.set(p, source);
+                    }
+
+                    if (prevId > curId && (virtualId <= curId || virtualId > prevId)) {
                         this.fingerTable.set(p, source);
                     }
                 });
@@ -111,6 +131,11 @@ public class Node {
     }
 
     public Node findNextNodeByVirtualId(int virtualId) {
+        return findNextNodeByVirtualIdAndPrintRoute(virtualId, false);
+    }
+
+    public Node findNextNodeByVirtualIdAndPrintRoute(int virtualId, boolean print) {
+        if (print) System.out.print(this.id + " --> ");
         Node next = this.fingerTable.getFirstNode();
 
         if (next.equals(this)) return this;
@@ -122,6 +147,6 @@ public class Node {
 
         if (this.id > next.getId() && next.getId() > virtualId) return next;
 
-        return fingerTable.search(virtualId).findNextNodeByVirtualId(virtualId);
+        return fingerTable.search(virtualId).findNextNodeByVirtualIdAndPrintRoute(virtualId, print);
     }
 }
