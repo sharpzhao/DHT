@@ -1,5 +1,6 @@
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -18,7 +19,7 @@ public class Node {
         return this.prevNode;
     }
 
-    public Map<Integer, String> getCache() {
+    public Map<Integer, String> getCaches() {
         return this.cache;
     }
 
@@ -39,15 +40,26 @@ public class Node {
     }
 
     public void migrateAll(Map<Integer, String> map) {
-        System.out.println("Entries migrated to Node(" + this.id + "): " + map);
+        // Rubrics 2, Correct keys are moved when a new node joins the DHT network. Print the keys that are migrated
+        System.out.println("\tEntries migrated to Node(" + this.id + "): " + map);
         this.cache.putAll(map);
     }
 
     public Map<Integer, String> migrateFrom(int fromId) {
+        int prevId = this.prevNode.getPrevNode().getId();
         Map<Integer, String> ret = this.cache.entrySet().stream()
-                .filter( entry -> entry.getKey() <= fromId)
+                .filter( entry -> {
+                    if (prevId < this.id) {
+                        return entry.getKey() <= fromId;
+                    }
+
+                    if (fromId < this.id) {
+                        return entry.getKey() <= fromId || entry.getKey() > prevId;
+                    }
+
+                    return entry.getKey() <= fromId && entry.getKey() > prevId;
+                })
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        // Rubrics 2, Correct keys are moved when a new node joins the DHT network. Print the keys that are migrated
         this.cache = this.cache.entrySet().stream()
                 .filter( entry -> entry.getKey() > fromId)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -57,7 +69,7 @@ public class Node {
     public Node(int id) {
         this.id = id;
         this.fingerTable = new FingerTable();
-        this.cache = new HashMap<>();
+        this.cache = new TreeMap<>();
     }
 
     public void join(Node node) {
@@ -66,14 +78,12 @@ public class Node {
             IntStream.range(0, Constants.IDENTIFIER_SIZE)
                     .forEach( p -> fingerTable.add(this) );
             this.prevNode= this;
-            // Rubrics 1, Build the finger table correctly and print the finger table in the screen when a new node joins.
-            System.out.println("New Node(" + this.id + ") Joined, FingerTable: " + this.fingerTable);
             return;
         }
 
         //otherwise, we join the node the current network.
 
-        //First get the next node
+        //First find the next node
         Node next = node.findNextNodeByVirtualId(id);
 
         //init the fingerTable of current joined Node.
@@ -81,7 +91,7 @@ public class Node {
                 .map(p -> (id + (int) Math.pow(2, p)) % circleMax)
                 .forEach(virtualId -> {
                     Node successor = node.findNextNodeByVirtualId(virtualId);
-                    fingerTable.add(successor.equals(next) && this.id > virtualId ? this : successor);
+                    fingerTable.add(successor);
                 });
 
         //re-set the previous node
@@ -90,9 +100,7 @@ public class Node {
 
         //update all the Node;
         this.prevNode.updateFingerTable(this);
-
-        // Rubrics 1, Build the finger table correctly and print the finger table in the screen when a new node joins.
-        System.out.println("New Node(" + this.id + ") Joined, FingerTable: " + this.fingerTable);
+        if (this.id == 228) System.out.println(this.fingerTable);
 
         //migrate the cache from next node.
         this.migrateAll(next.migrateFrom(this.id));
@@ -119,6 +127,8 @@ public class Node {
     }
 
     public String insert(int key, String value) {
+        // this is not the best way, since we control the remote node here.
+        // the best way is just send the insert message to next node, and update once we got the correct node.
         return this.findNextNodeByVirtualId(key).putCache(key, value);
     }
 
@@ -126,16 +136,14 @@ public class Node {
         return this.findNextNodeByVirtualId(key).removeCache(key);
     }
 
-    public String get(int key) {
-        System.out.print("Get Key(" + key + "), Node Traverse Route: ");
+    public String find(int key) {
+        System.out.print("find Key(" + key + ") From Node(" + this.id + "), Node Traverse Route: ");
         Node node = this.findNextNodeByVirtualIdAndPrintRoute(key, true);
-        System.out.println(node.getId() + " ( Value: " + node.getCache(key) + ")");
+        System.out.println(node.getId() + " ( Value in Node(" + node.getId() + "): " + node.getCache(key) + ")");
         return node.getCache(key);
     }
 
     public void updateFingerTable(Node source) {
-
-        if (source.getId() == this.id) return;
 
         IntStream.range(0, Constants.IDENTIFIER_SIZE)
                 .forEach( p -> {
@@ -151,6 +159,7 @@ public class Node {
                         this.fingerTable.set(p, source);
                     }
                 });
+        if (source.getId() == this.id) return;
         this.prevNode.updateFingerTable(source);
     }
 
@@ -169,7 +178,7 @@ public class Node {
             return next;
         }
 
-        if (this.id > next.getId() && next.getId() > virtualId) return next;
+        if (this.id > next.getId() && next.getId() >= virtualId) return next;
 
         return fingerTable.search(virtualId).findNextNodeByVirtualIdAndPrintRoute(virtualId, print);
     }

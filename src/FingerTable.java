@@ -29,7 +29,7 @@ public class FingerTable {
 
             if (cur.getId() < virtualId && (next.getId() >= virtualId || next.getId() < cur.getId())) return cur;
 
-            if (cur.getId() > next.getId() && virtualId < next.getId()) return cur;
+            if (cur.getId() > next.getId() && virtualId <= next.getId()) return cur;
         }
         return successors.get(successors.size() - 1);
     }
